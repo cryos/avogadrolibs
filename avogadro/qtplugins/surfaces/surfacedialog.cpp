@@ -45,6 +45,8 @@ SurfaceDialog::SurfaceDialog(QWidget* parent_, Qt::WindowFlags f)
           SLOT(surfaceComboChanged(int)));
   connect(m_ui->resolutionCombo, SIGNAL(currentIndexChanged(int)),
           SLOT(resolutionComboChanged(int)));
+  connect(m_ui->stepValue, SIGNAL(valueChanged(int)),
+          SIGNAL(stepChanged(int)));
   connect(m_ui->calculateButton, SIGNAL(clicked()), SLOT(calculateClicked()));
 }
 
@@ -156,6 +158,16 @@ void SurfaceDialog::setupCubes(QStringList cubeNames)
   m_ui->orbitalCombo->setCurrentIndex(0);
 }
 
+void SurfaceDialog::setupSteps(int stepCount)
+{
+  if (stepCount < 2) {
+    m_ui->stepValue->setEnabled(false);
+  } else {
+    m_ui->stepValue->setEnabled(true);
+    m_ui->stepValue->setRange(1, stepCount);
+  }
+}
+
 Surfaces::Type SurfaceDialog::surfaceType()
 {
   return static_cast<Surfaces::Type>(m_ui->surfaceCombo->currentData().toInt());
@@ -179,6 +191,11 @@ float SurfaceDialog::isosurfaceValue()
 float SurfaceDialog::resolution()
 {
   return static_cast<float>(m_ui->resolutionDoubleSpinBox->value());
+}
+
+int SurfaceDialog::step()
+{
+  return m_ui->stepValue->value();
 }
 
 void SurfaceDialog::calculateClicked()

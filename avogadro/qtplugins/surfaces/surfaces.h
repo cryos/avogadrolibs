@@ -84,6 +84,8 @@ private slots:
   void calculateQM();
   void calculateCube();
 
+  void stepChanged(int);
+
   void displayMesh();
   void meshFinished();
 

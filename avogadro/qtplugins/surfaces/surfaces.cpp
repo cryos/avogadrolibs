@@ -49,6 +49,7 @@ namespace QtPlugins {
 
 using Core::Cube;
 using Core::GaussianSet;
+using QtGui::Molecule;
 
 Surfaces::Surfaces(QObject* p)
   : ExtensionPlugin(p)
@@ -113,6 +114,7 @@ void Surfaces::surfacesActivated()
     m_dialog = new SurfaceDialog(qobject_cast<QWidget*>(parent()));
     connect(m_dialog, SIGNAL(calculateClickedSignal()),
             SLOT(calculateSurface()));
+    connect(m_dialog, SIGNAL(stepChanged(int)), SLOT(stepChanged(int)));
   }
 
   if (m_basis) {
@@ -132,9 +134,9 @@ void Surfaces::surfacesActivated()
     for (unsigned int i = 0; i < m_cubes.size(); ++i) {
       cubeNames << m_cubes[i]->name().c_str();
     }
-
     m_dialog->setupCubes(cubeNames);
   }
+  m_dialog->setupSteps(m_molecule->coordinate3dCount());
 
   m_dialog->show();
 }
@@ -182,6 +184,14 @@ void Surfaces::calculateQM()
 {
   if (!m_basis || !m_dialog)
     return; // nothing to do
+
+  // Reset state a little more frequently, minimal cost, avoid bugs.
+  m_molecule->clearCubes();
+  m_molecule->clearMeshes();
+  m_cube = nullptr;
+  m_mesh1 = nullptr;
+  m_mesh2 = nullptr;
+  m_molecule->emitChanged(Molecule::Atoms | Molecule::Added);
 
   // set up QtConcurrent calculators for Gaussian or Slater basis sets
   if (dynamic_cast<GaussianSet*>(m_basis)) {
@@ -274,10 +284,30 @@ void Surfaces::calculateCube()
   displayMesh();
 }
 
+void Surfaces::stepChanged(int n)
+{
+  if (!m_molecule || !m_basis)
+    return;
+
+  qDebug() << "Step changed to" << n;
+  auto g = dynamic_cast<GaussianSet*>(m_basis);
+  if (g) {
+    g->setActiveSetStep(n - 1);
+    m_molecule->clearCubes();
+    m_molecule->clearMeshes();
+    m_cube = nullptr;
+    m_mesh1 = nullptr;
+    m_mesh2 = nullptr;
+    m_molecule->emitChanged(Molecule::Atoms | Molecule::Added);
+  }
+}
+
 void Surfaces::displayMesh()
 {
   if (!m_cube)
     return;
+
+  qDebug() << "Cube is done, now calculate the meshes...";
 
   if (!m_mesh1)
     m_mesh1 = m_molecule->addMesh();
@@ -305,6 +335,7 @@ void Surfaces::meshFinished()
 {
   m_dialog->reenableCalculateButton();
   m_molecule->emitChanged(QtGui::Molecule::Added);
+  qDebug() << "Mesh ready to display...";
   // TODO: enable the mesh display type
 }
 
