@@ -157,8 +157,8 @@ vtkGLWidget::vtkGLWidget(QWidget* p, Qt::WindowFlags f)
   GetInteractor()->SetInteractorStyle(interactor.Get());
   GetInteractor()->Initialize();
 
-  m_actor->setScene(&this->renderer().scene());
-  m_vtkRenderer->AddActor(m_actor.Get());
+  //m_actor->setScene(&this->renderer().scene());
+  //m_vtkRenderer->AddActor(m_actor.Get());
 
   // GetRenderWindow()->SetSwapBuffers(0);
   // setAutoBufferSwap(true);
@@ -177,6 +177,7 @@ void vtkGLWidget::setMolecule(QtGui::Molecule* mol)
   foreach (QtGui::ToolPlugin* tool, m_tools)
     tool->setMolecule(m_molecule);
   connect(m_molecule, SIGNAL(changed(unsigned int)), SLOT(updateScene()));
+  qDebug() << "Molecule set" << mol << mol->cubeCount();
   if (mol->cubeCount() > 0) {
     vtkVolume* vol = cubeVolume(mol->cube(0));
     m_vtkRenderer->AddViewProp(vol);
