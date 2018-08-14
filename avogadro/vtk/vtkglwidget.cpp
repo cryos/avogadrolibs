@@ -25,12 +25,17 @@
 #include "vtkAvogadroActor.h"
 #include <QVTKInteractor.h>
 #include <vtkColorTransferFunction.h>
+#include <vtkFlyingEdges3D.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkImageData.h>
 #include <vtkImageShiftScale.h>
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkLookupTable.h>
+#include <vtkMolecule.h>
+#include <vtkMoleculeMapper.h>
 #include <vtkPiecewiseFunction.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkProperty.h>
 #include <vtkRenderViewBase.h>
 #include <vtkRenderer.h>
 #include <vtkSmartVolumeMapper.h>
@@ -40,10 +45,37 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkSphereSource.h>
 
+#include <QtGui/QSurfaceFormat>
+
 #include <QDebug>
 
 namespace Avogadro {
 namespace VTK {
+
+vtkImageData* cubeImageData(Core::Cube* cube)
+{
+  auto data = vtkImageData::New();
+  // data->SetNumberOfScalarComponents(1, nullptr);
+  Eigen::Vector3i dim = cube->dimensions();
+  data->SetExtent(0, dim.x() - 1, 0, dim.y() - 1, 0, dim.z() - 1);
+
+  data->SetOrigin(cube->min().x(), cube->min().y(), cube->min().z());
+  data->SetSpacing(cube->spacing().data());
+
+  data->AllocateScalars(VTK_DOUBLE, 1);
+
+  double* dataPtr = static_cast<double*>(data->GetScalarPointer());
+  std::vector<double>* cubePtr = cube->data();
+
+  for (int i = 0; i < dim.x(); ++i)
+    for (int j = 0; j < dim.y(); ++j)
+      for (int k = 0; k < dim.z(); ++k) {
+        dataPtr[(k * dim.y() + j) * dim.x() + i] =
+          (*cubePtr)[(i * dim.y() + j) * dim.z() + k];
+      }
+
+  return data;
+}
 
 vtkVolume* cubeVolume(Core::Cube* cube)
 {
@@ -52,7 +84,7 @@ vtkVolume* cubeVolume(Core::Cube* cube)
 
   qDebug() << "min/max:" << cube->minValue() << cube->maxValue();
   qDebug() << cube->data()->size();
-
+  
   vtkNew<vtkImageData> data;
   // data->SetNumberOfScalarComponents(1, nullptr);
   Eigen::Vector3i dim = cube->dimensions();
@@ -81,8 +113,10 @@ vtkVolume* cubeVolume(Core::Cube* cube)
 
   vtkNew<vtkImageShiftScale> t;
   t->SetInputData(data.GetPointer());
-  t->SetShift(-range[0]);
-  double magnitude = range[1] - range[0];
+  double maxValue = (fabs(range[0]) > fabs(range[1])) ? fabs(range[0])
+                                                      : fabs(range[1]);
+  t->SetShift(maxValue);
+  double magnitude = 2.0 * maxValue;
   if (magnitude == 0.0) {
     magnitude = 1.0;
   }
@@ -107,16 +141,16 @@ vtkVolume* cubeVolume(Core::Cube* cube)
   vtkNew<vtkPiecewiseFunction> compositeOpacity;
   vtkNew<vtkColorTransferFunction> color;
   // if (cube->cubeType() == Core::Cube::MO) {
-  compositeOpacity->AddPoint(0.00, 0.6);
-  compositeOpacity->AddPoint(63.75, 0.7);
+  compositeOpacity->AddPoint(0.00, 1.0);
+  compositeOpacity->AddPoint(73.75, 0.8);
   compositeOpacity->AddPoint(127.50, 0.0);
-  compositeOpacity->AddPoint(192.25, 0.7);
-  compositeOpacity->AddPoint(255.00, 0.6);
+  compositeOpacity->AddPoint(182.25, 0.8);
+  compositeOpacity->AddPoint(255.00, 1.0);
 
   color->AddRGBPoint(0.00, 1.0, 0.0, 0.0);
-  color->AddRGBPoint(63.75, 0.8, 0.0, 0.0);
-  color->AddRGBPoint(127.50, 0.0, 0.1, 0.0);
-  color->AddRGBPoint(192.25, 0.0, 0.0, 0.8);
+  //color->AddRGBPoint(63.75, 0.8, 0.0, 0.0);
+  color->AddRGBPoint(127.00, 1.0, 0.0, 0.0);
+  color->AddRGBPoint(128.00, 0.0, 0.0, 1.0);
   color->AddRGBPoint(255.00, 0.0, 0.0, 1.0);
   //}
   //  else {
@@ -152,13 +186,24 @@ vtkGLWidget::vtkGLWidget(QWidget* p, Qt::WindowFlags f)
           SLOT(updateScene()));
 
   // Set up our renderer, window, scene, etc.
-  GetRenderWindow()->AddRenderer(m_vtkRenderer.Get());
+  vtkNew<vtkGenericOpenGLRenderWindow> renderWindow;
+  SetRenderWindow(renderWindow);
+  GetRenderWindow()->AddRenderer(m_vtkRenderer);
+  setFormat(QVTKOpenGLWidget::defaultFormat());
   vtkNew<vtkInteractorStyleTrackballCamera> interactor;
-  GetInteractor()->SetInteractorStyle(interactor.Get());
+  GetInteractor()->SetInteractorStyle(interactor);
   GetInteractor()->Initialize();
+  m_vtkRenderer->SetBackground(1.0, 1.0, 1.0);
 
-  m_actor->setScene(&this->renderer().scene());
-  m_vtkRenderer->AddActor(m_actor.Get());
+  
+  //m_actor->setScene(&this->renderer().scene());
+  m_moleculeMapper->UseBallAndStickSettings();
+  m_actor->SetMapper(m_moleculeMapper);
+  m_actor->GetProperty()->SetAmbient(0.0);
+  m_actor->GetProperty()->SetDiffuse(1.0);
+  m_actor->GetProperty()->SetSpecular(0.0);
+  m_actor->GetProperty()->SetSpecularPower(40);
+  m_vtkRenderer->AddActor(m_actor);
 
   // GetRenderWindow()->SetSwapBuffers(0);
   // setAutoBufferSwap(true);
@@ -180,6 +225,24 @@ void vtkGLWidget::setMolecule(QtGui::Molecule* mol)
   if (mol->cubeCount() > 0) {
     vtkVolume* vol = cubeVolume(mol->cube(0));
     m_vtkRenderer->AddViewProp(vol);
+
+    vtkNew<vtkFlyingEdges3D> contour;
+    contour->SetInputData(cubeImageData(mol->cube(0)));
+    contour->GenerateValues(2, -0.03, 0.03);
+    contour->ComputeNormalsOn();
+    contour->ComputeScalarsOn();
+    contour->SetArrayComponent(0);
+
+    vtkNew<vtkPolyDataMapper> polyMapper;
+    polyMapper->SetInputConnection(contour->GetOutputPort());
+    vtkNew<vtkActor> polyActor;
+    polyActor->GetProperty()->SetOpacity(0.3);
+    polyActor->SetMapper(polyMapper);
+    m_vtkRenderer->AddActor(polyActor);
+
+
+
+    m_vtkRenderer->ResetCamera();
   }
 }
 
@@ -195,6 +258,25 @@ const QtGui::Molecule* vtkGLWidget::molecule() const
 
 void vtkGLWidget::updateScene()
 {
+  if (m_molecule) {
+    if (m_vtkMolecule)
+      m_vtkMolecule->Delete();
+    m_vtkMolecule = vtkMolecule::New();
+    for (Index i = 0; i < m_molecule->atomCount(); ++i) {
+      auto a = m_molecule->atom(i);
+      m_vtkMolecule->AppendAtom(a.atomicNumber(),
+                                a.position3d().x(),
+                                a.position3d().y(),
+                                a.position3d().z());
+    }
+    for (Index i = 0; i < m_molecule->bondCount(); ++i) {
+      auto b = m_molecule->bond(i);
+      m_vtkMolecule->AppendBond(b.atom1().index(), b.atom2().index(),
+                                b.order());
+    }
+    m_moleculeMapper->SetInputData(m_vtkMolecule);
+    return;
+  }
   // Build up the scene with the scene plugins, creating the appropriate nodes.
   QtGui::Molecule* mol = m_molecule;
   if (!mol)

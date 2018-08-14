@@ -28,9 +28,11 @@
 
 #include <QtCore/QPointer>
 
-class vtkAvogadroActor;
+class vtkActor;
 class vtkLookupTable;
 // class vtkRenderViewBase;
+class vtkMolecule;
+class vtkMoleculeMapper;
 class vtkRenderer;
 class vtkVolume;
 
@@ -100,11 +102,13 @@ private:
   Rendering::GLRenderer m_renderer;
   QtGui::ScenePluginModel m_scenePlugins;
 
-  vtkNew<vtkAvogadroActor> m_actor;
+  vtkNew<vtkActor> m_actor;
   // vtkNew<vtkRenderViewBase> m_context;
   vtkNew<vtkRenderer> m_vtkRenderer;
   vtkNew<vtkLookupTable> m_lut;
   vtkSmartPointer<vtkVolume> m_volume;
+  vtkSmartPointer<vtkMolecule> m_vtkMolecule;
+  vtkNew<vtkMoleculeMapper> m_moleculeMapper;
 };
 }
 }
