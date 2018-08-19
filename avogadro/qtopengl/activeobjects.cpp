@@ -24,9 +24,19 @@ GLWidget* ActiveObjects::activeGLWidget() const
   return m_glWidget;
 }
 
+QWidget* ActiveObjects::activeWidget() const
+{
+  return m_widget;
+}
+
 void ActiveObjects::setActiveGLWidget(GLWidget* glWidget)
 {
   m_glWidget = glWidget;
+}
+
+void ActiveObjects::setActiveWidget(QWidget* widget)
+{
+  m_widget = widget;
 }
 
 } // namespace QtOpenGL

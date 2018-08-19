@@ -52,7 +52,8 @@
 namespace Avogadro {
 namespace VTK {
 
-vtkImageData* cubeImageData(Core::Cube* cube)
+// The caller assumes ownership of the vtkImageData returned.
+vtkImageData* createCubeImageData(Core::Cube* cube)
 {
   auto data = vtkImageData::New();
   // data->SetNumberOfScalarComponents(1, nullptr);
@@ -67,17 +68,19 @@ vtkImageData* cubeImageData(Core::Cube* cube)
   double* dataPtr = static_cast<double*>(data->GetScalarPointer());
   std::vector<double>* cubePtr = cube->data();
 
-  for (int i = 0; i < dim.x(); ++i)
-    for (int j = 0; j < dim.y(); ++j)
+  for (int i = 0; i < dim.x(); ++i) {
+    for (int j = 0; j < dim.y(); ++j) {
       for (int k = 0; k < dim.z(); ++k) {
         dataPtr[(k * dim.y() + j) * dim.x() + i] =
           (*cubePtr)[(i * dim.y() + j) * dim.z() + k];
       }
+    }
+  }
 
   return data;
 }
 
-vtkVolume* cubeVolume(Core::Cube* cube)
+void vtkGLWidget::cubeVolume(Core::Cube* cube)
 {
   qDebug() << "Cube dimensions: " << cube->dimensions().x()
            << cube->dimensions().y() << cube->dimensions().z();
@@ -85,34 +88,18 @@ vtkVolume* cubeVolume(Core::Cube* cube)
   qDebug() << "min/max:" << cube->minValue() << cube->maxValue();
   qDebug() << cube->data()->size();
   
-  vtkNew<vtkImageData> data;
-  // data->SetNumberOfScalarComponents(1, nullptr);
-  Eigen::Vector3i dim = cube->dimensions();
-  data->SetExtent(0, dim.x() - 1, 0, dim.y() - 1, 0, dim.z() - 1);
-
-  data->SetOrigin(cube->min().x(), cube->min().y(), cube->min().z());
-  data->SetSpacing(cube->spacing().data());
-
-  data->AllocateScalars(VTK_DOUBLE, 1);
-
-  double* dataPtr = static_cast<double*>(data->GetScalarPointer());
-  std::vector<double>* cubePtr = cube->data();
-
-  for (int i = 0; i < dim.x(); ++i)
-    for (int j = 0; j < dim.y(); ++j)
-      for (int k = 0; k < dim.z(); ++k) {
-        dataPtr[(k * dim.y() + j) * dim.x() + i] =
-          (*cubePtr)[(i * dim.y() + j) * dim.z() + k];
-      }
-
+  m_imageData = createCubeImageData(cube);
+  // Call delete to decrement the reference count now it is in a smart pointer.
+  m_imageData->Delete();
+/*
   double range[2];
-  range[0] = data->GetScalarRange()[0];
-  range[1] = data->GetScalarRange()[1];
+  range[0] = m_imageData->GetScalarRange()[0];
+  range[1] = m_imageData->GetScalarRange()[1];
   // a->GetRange(range);
   qDebug() << "ImageData range: " << range[0] << range[1];
 
   vtkNew<vtkImageShiftScale> t;
-  t->SetInputData(data.GetPointer());
+  t->SetInputData(m_imageData);
   double maxValue = (fabs(range[0]) > fabs(range[1])) ? fabs(range[0])
                                                       : fabs(range[1]);
   t->SetShift(maxValue);
@@ -126,22 +113,40 @@ vtkVolume* cubeVolume(Core::Cube* cube)
   qDebug() << "magnitude: " << magnitude;
 
   t->Update();
-
+*/
   vtkNew<vtkSmartVolumeMapper> volumeMapper;
   vtkNew<vtkVolumeProperty> volumeProperty;
-  vtkVolume* volume = vtkVolume::New();
 
   volumeMapper->SetBlendModeToComposite();
-  // volumeMapper->SetBlendModeToComposite(); // composite first
-  volumeMapper->SetInputConnection(t->GetOutputPort());
+  volumeMapper->SetInputData(m_imageData);
+  //volumeMapper->SetInputConnection(t->GetOutputPort());
 
   volumeProperty->ShadeOff();
   volumeProperty->SetInterpolationTypeToLinear();
 
-  vtkNew<vtkPiecewiseFunction> compositeOpacity;
-  vtkNew<vtkColorTransferFunction> color;
+  auto compositeOpacity = m_opacityFunction.Get();
+  auto color = m_lut.Get();
+  if (color->GetSize() == 0) {
+    // Initialize the color and opacity function.
+    double range[2];
+    m_imageData->GetScalarRange(range);
+    if (range[0] < 0.0) {
+      // Likely a molecular orbital, let's make something symmetric.
+      auto magnitude = std::max(std::fabs(range[0]), std::fabs(range[1]));
+      color->AddRGBPoint(-magnitude, 1.0, 0.0, 0.0);
+      color->AddRGBPoint(-0.01 * magnitude, 1.0, 0.0, 0.0);
+      color->AddRGBPoint( 0.01 * magnitude, 0.0, 0.0, 1.0);
+      color->AddRGBPoint( magnitude, 0.0, 0.0, 1.0);
+
+      compositeOpacity->AddPoint(-magnitude, 1.0);
+      compositeOpacity->AddPoint(-0.2 * magnitude, 0.8);
+      compositeOpacity->AddPoint(0, 0.0);
+      compositeOpacity->AddPoint( 0.2 * magnitude, 0.8);
+      compositeOpacity->AddPoint( magnitude, 1.0);
+    }
+  }
   // if (cube->cubeType() == Core::Cube::MO) {
-  compositeOpacity->AddPoint(0.00, 1.0);
+  /*compositeOpacity->AddPoint(0.00, 1.0);
   compositeOpacity->AddPoint(73.75, 0.8);
   compositeOpacity->AddPoint(127.50, 0.0);
   compositeOpacity->AddPoint(182.25, 0.8);
@@ -151,30 +156,13 @@ vtkVolume* cubeVolume(Core::Cube* cube)
   //color->AddRGBPoint(63.75, 0.8, 0.0, 0.0);
   color->AddRGBPoint(127.00, 1.0, 0.0, 0.0);
   color->AddRGBPoint(128.00, 0.0, 0.0, 1.0);
-  color->AddRGBPoint(255.00, 0.0, 0.0, 1.0);
-  //}
-  //  else {
-  //    compositeOpacity->AddPoint( 0.00, 0.00);
-  //    compositeOpacity->AddPoint( 1.75, 0.30);
-  //    compositeOpacity->AddPoint( 2.50, 0.50);
-  //    compositeOpacity->AddPoint(192.25, 0.85);
-  //    compositeOpacity->AddPoint(255.00, 0.90);
+  color->AddRGBPoint(255.00, 0.0, 0.0, 1.0); */
 
-  //    color->AddRGBPoint(  0.00, 0.0, 0.0, 1.0);
-  //    color->AddRGBPoint( 63.75, 0.0, 0.0, 0.8);
-  //    color->AddRGBPoint(127.50, 0.0, 0.0, 0.5);
-  //    color->AddRGBPoint(191.25, 0.0, 0.0, 0.2);
-  //    color->AddRGBPoint(255.00, 0.0, 0.0, 0.0);
-  //  }
+  volumeProperty->SetScalarOpacity(compositeOpacity); // composite first.
+  volumeProperty->SetColor(color);
 
-  volumeProperty->SetScalarOpacity(
-    compositeOpacity.GetPointer()); // composite first.
-  volumeProperty->SetColor(color.GetPointer());
-
-  volume->SetMapper(volumeMapper.GetPointer());
-  volume->SetProperty(volumeProperty.GetPointer());
-
-  return volume;
+  m_volume->SetMapper(volumeMapper);
+  m_volume->SetProperty(volumeProperty);
 }
 
 vtkGLWidget::vtkGLWidget(QWidget* p, Qt::WindowFlags f)
@@ -205,6 +193,8 @@ vtkGLWidget::vtkGLWidget(QWidget* p, Qt::WindowFlags f)
   m_actor->GetProperty()->SetSpecularPower(40);
   m_vtkRenderer->AddActor(m_actor);
 
+  m_vtkRenderer->AddViewProp(m_volume);
+
   // GetRenderWindow()->SetSwapBuffers(0);
   // setAutoBufferSwap(true);
 }
@@ -223,12 +213,11 @@ void vtkGLWidget::setMolecule(QtGui::Molecule* mol)
     tool->setMolecule(m_molecule);
   connect(m_molecule, SIGNAL(changed(unsigned int)), SLOT(updateScene()));
   if (mol->cubeCount() > 0) {
-    vtkVolume* vol = cubeVolume(mol->cube(0));
-    m_vtkRenderer->AddViewProp(vol);
+    cubeVolume(mol->cube(0));
 
     vtkNew<vtkFlyingEdges3D> contour;
-    contour->SetInputData(cubeImageData(mol->cube(0)));
-    contour->GenerateValues(2, -0.03, 0.03);
+    contour->SetInputData(createCubeImageData(mol->cube(0)));
+    contour->GenerateValues(2, -0.05, 0.05);
     contour->ComputeNormalsOn();
     contour->ComputeScalarsOn();
     contour->SetArrayComponent(0);
@@ -236,7 +225,7 @@ void vtkGLWidget::setMolecule(QtGui::Molecule* mol)
     vtkNew<vtkPolyDataMapper> polyMapper;
     polyMapper->SetInputConnection(contour->GetOutputPort());
     vtkNew<vtkActor> polyActor;
-    polyActor->GetProperty()->SetOpacity(0.3);
+    polyActor->GetProperty()->SetOpacity(0.2);
     polyActor->SetMapper(polyMapper);
     m_vtkRenderer->AddActor(polyActor);
 
@@ -254,6 +243,21 @@ QtGui::Molecule* vtkGLWidget::molecule()
 const QtGui::Molecule* vtkGLWidget::molecule() const
 {
   return m_molecule;
+}
+
+vtkColorTransferFunction* vtkGLWidget::lut() const
+{
+  return m_lut;
+}
+
+vtkPiecewiseFunction* vtkGLWidget::opacityFunction() const
+{
+  return m_opacityFunction;
+}
+
+vtkImageData* vtkGLWidget::imageData() const
+{
+  return m_imageData;
 }
 
 void vtkGLWidget::updateScene()

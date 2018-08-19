@@ -27,17 +27,21 @@
 #include <avogadro/core/unitcell.h>
 #include <avogadro/core/cube.h>
 #include <avogadro/qtgui/molecule.h>
+#include <avogadro/qtopengl/activeobjects.h>
 #include <avogadro/vtk/vtkplot.h>
+#include <avogadro/vtk/vtkglwidget.h>
 
 #include <vtkColorTransferFunction.h>
 #include <vtkPiecewiseFunction.h>
 #include <vtkTable.h>
+#include <vtkRenderWindow.h>
 
 #include <QDebug>
 
 using Avogadro::Core::CrystalTools;
 using Avogadro::Core::UnitCell;
 using Avogadro::QtGui::Molecule;
+using Avogadro::QtOpenGL::ActiveObjects;
 
 using std::map;
 
@@ -144,45 +148,40 @@ void ColorOpacityMap::displayDialog()
   if (!m_histogramWidget) {
     m_histogramWidget = new HistogramWidget;
     m_histogramWidget->resize(800, 600);
+    connect(m_histogramWidget, SIGNAL(colorMapUpdated()), SLOT(render()));
+    connect(m_histogramWidget, SIGNAL(opacityChanged()), SLOT(render()));
   }
+
+  auto widget = ActiveObjects::instance().activeWidget();
+  qDebug() << "Found" << widget;
+  auto vtkWidget = qobject_cast<VTK::vtkGLWidget*>(widget);
+  qDebug() << "Found" << vtkWidget;
 
   if (m_molecule && m_molecule->cubeCount()) {
     vtkNew<vtkTable> table;
-    auto imageData = cubeImageData(m_molecule->cube(0));
+    auto imageData = vtkWidget->imageData();
+    auto lut = vtkWidget->lut();
+    auto opacity = vtkWidget->opacityFunction();
+
+    m_histogramWidget->setLUT(lut);
+    m_histogramWidget->setOpacityFunction(opacity);
+
     PopulateHistogram(imageData, table);
     m_histogramWidget->setInputData(table, "image_extents", "image_pops");
-    auto lut = m_histogramWidget->LUT();
-    int pointCount = lut->GetSize();
-    double* lutTable = lut->GetDataPointer();
-    double range[2];
-    imageData->GetScalarRange(range);
-    double lutRange[2];
-    lut->GetRange(lutRange);
-    double max = std::max(fabs(range[0]), fabs(range[1]));
-    double add = range[0];
-    if (fabs(range[0]) < fabs(range[1]))
-      add = range[0] < 0.0 ? -range[1] : range[1];
-    double mult = (2.0 * max) / (lutRange[1] - lutRange[0]);
-    for (int i = 0; i < pointCount; ++i) {
-      lutTable[4 * i] = (lutTable[4 * i] - lutRange[0]) * mult + add;
-    }
-    lut->FillFromDataPointer(pointCount, lutTable);
-    lut->Modified();
-
-    auto opacity = m_histogramWidget->opacityFunction();
-    double opRange[2];
-    opacity->GetRange(opRange);
-    int opCount = opacity->GetSize();
-    mult = (2.0 * max) / (opRange[1] - opRange[0]);
-    double* opTable = opacity->GetDataPointer();
-    for (int i = 0; i < opCount; ++i) {
-      opTable[2 * i] = (opTable[2 * i] - opRange[0]) * mult + add;
-    }
-    opacity->FillFromDataPointer(opCount, opTable);
-    opacity->Modified();
   }
 
   m_histogramWidget->show();
+}
+
+void ColorOpacityMap::render()
+{
+  qDebug() << "render() slot activated, attempting render...";
+  auto widget = ActiveObjects::instance().activeWidget();
+  auto vtkWidget = qobject_cast<VTK::vtkGLWidget*>(widget);
+  if (vtkWidget) {
+    vtkWidget->GetRenderWindow()->Render();
+    vtkWidget->update();
+  }
 }
 
 } // namespace QtPlugins

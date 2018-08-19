@@ -8,15 +8,14 @@
 
 #include "avogadroqtopenglexport.h"
 
+#include "glwidget.h"
+
 #include <QtCore/QObject>
 
 #include <QtCore/QPointer>
 
 namespace Avogadro {
 namespace QtOpenGL {
-
-class GLWidget;
-
 /**
  * @class ActiveObjects activeobjects.h <avogadro/qtopengl/activeobjects.h>
  * @brief Singleton to provide access to active objects.
@@ -40,9 +39,17 @@ public:
   /** Get the active GLWidget. **/
   GLWidget* activeGLWidget() const;
 
+  /** 
+   * Get the active widget (more general, could be GLWidget, vtkGLWidget, etc).
+   */
+  QWidget* activeWidget() const;
+
 public slots:
   /** Set the active GLWidget. **/
   void setActiveGLWidget(GLWidget* glWidget);
+
+  /** Set the active widget (GLWidget, vtkGLWidget, etc). */
+  void setActiveWidget(QWidget* widget);
 
 private:
   ActiveObjects();
@@ -50,6 +57,7 @@ private:
   Q_DISABLE_COPY(ActiveObjects)
 
   QPointer<GLWidget> m_glWidget = nullptr;
+  QPointer<QWidget> m_widget = nullptr;
 };
 
 } // namespace QtOpenGL

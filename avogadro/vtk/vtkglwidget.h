@@ -29,15 +29,19 @@
 #include <QtCore/QPointer>
 
 class vtkActor;
-class vtkLookupTable;
+class vtkColorTransferFunction;
 // class vtkRenderViewBase;
 class vtkMolecule;
 class vtkMoleculeMapper;
+class vtkPiecewiseFunction;
 class vtkRenderer;
 class vtkVolume;
+class vtkImageData;
 
 namespace Avogadro {
-
+namespace Core {
+class Cube;
+}
 namespace QtGui {
 class Molecule;
 class ToolPlugin;
@@ -76,6 +80,21 @@ public:
   const QtGui::ScenePluginModel& sceneModel() const { return m_scenePlugins; }
   /** @}*/
 
+  /**
+   * Get the color loop up table for the volume renderer.
+   */
+  vtkColorTransferFunction* lut() const;
+
+  /**
+   * Get the opacity function for the volume renderer.
+   */
+  vtkPiecewiseFunction* opacityFunction() const;
+
+  /**
+   * Get the vtkImageData that is being volume rendered.
+   */
+  vtkImageData* imageData() const;
+
 public slots:
   /**
    * Update the scene plugins for the widget, this will generate geeometry in
@@ -94,6 +113,9 @@ public slots:
   /** Reset the geometry when the molecule etc changes. */
   void resetGeometry();
 
+  /** Volume render the supplied cube. */
+  void cubeVolume(Core::Cube* cube);
+
 private:
   QPointer<QtGui::Molecule> m_molecule;
   QList<QtGui::ToolPlugin*> m_tools;
@@ -105,8 +127,10 @@ private:
   vtkNew<vtkActor> m_actor;
   // vtkNew<vtkRenderViewBase> m_context;
   vtkNew<vtkRenderer> m_vtkRenderer;
-  vtkNew<vtkLookupTable> m_lut;
-  vtkSmartPointer<vtkVolume> m_volume;
+  vtkNew<vtkColorTransferFunction> m_lut;
+  vtkNew<vtkPiecewiseFunction> m_opacityFunction;
+  vtkSmartPointer<vtkImageData> m_imageData;
+  vtkNew<vtkVolume> m_volume;
   vtkSmartPointer<vtkMolecule> m_vtkMolecule;
   vtkNew<vtkMoleculeMapper> m_moleculeMapper;
 };

@@ -17,6 +17,9 @@
 
 #include "qvtkwidget.h"
 
+#include <avogadro/qtopengl/activeobjects.h>
+#include <avogadro/vtk/vtkglwidget.h>
+
 #include "vtkChartHistogramColorOpacityEditor.h"
 
 #include <vtkContextScene.h>
@@ -44,13 +47,15 @@
 
 namespace Avogadro {
 
+using QtOpenGL::ActiveObjects;
+
 HistogramWidget::HistogramWidget(QWidget* parent)
   : QWidget(parent), m_qvtk(new QVTKGLWidget(this))
 {
   // Set up our little chart.
   m_histogramView->SetRenderWindow(m_qvtk->GetRenderWindow());
   m_histogramView->SetInteractor(m_qvtk->GetInteractor());
-  m_histogramView->GetScene()->AddItem(m_histogramColorOpacityEditor.Get());
+  m_histogramView->GetScene()->AddItem(m_histogramColorOpacityEditor);
 
   // Connect events from the histogram color/opacity editor.
   m_eventLink->Connect(m_histogramColorOpacityEditor,
@@ -65,7 +70,7 @@ HistogramWidget::HistogramWidget(QWidget* parent)
 
   auto hLayout = new QHBoxLayout(this);
   hLayout->addWidget(m_qvtk);
-
+  /*
   vtkNew<vtkPiecewiseFunction> compositeOpacity;
   vtkNew<vtkColorTransferFunction> color;
   // if (cube->cubeType() == Core::Cube::MO) {
@@ -85,6 +90,7 @@ HistogramWidget::HistogramWidget(QWidget* parent)
   setOpacityFunction(compositeOpacity);
   m_histogramColorOpacityEditor->SetColorTransferFunction(color);
   m_histogramColorOpacityEditor->SetOpacityFunction(compositeOpacity);
+  */
   
   //connect(&ActiveObjects::instance(), SIGNAL(viewChanged(vtkSMViewProxy*)),
   //        this, SLOT(updateUI()));
@@ -98,22 +104,24 @@ HistogramWidget::~HistogramWidget() = default;
 void HistogramWidget::setLUT(vtkColorTransferFunction* lut)
 {
   if (m_LUT != lut) {
-    if (m_opacityFunction) {
-      m_eventLink->Disconnect(m_opacityFunction,
-                              vtkCommand::ModifiedEvent, this,
-                              SLOT(onScalarOpacityFunctionChanged()));
-    }
     m_LUT = lut;
-    //m_scalarOpacityFunction = m_LUT->GetScalarOpacityFunction();
-    //m_eventLink->Connect(m_scalarOpacityFunction, vtkCommand::ModifiedEvent,
-    //                     this, SLOT(onScalarOpacityFunctionChanged()));
+    m_histogramColorOpacityEditor->SetColorTransferFunction(lut);
+    
     emit colorMapUpdated();
   }
 }
 
 void HistogramWidget::setOpacityFunction(vtkPiecewiseFunction* opacity)
 {
+  if (m_opacityFunction) {
+    m_eventLink->Disconnect(m_opacityFunction,
+                            vtkCommand::ModifiedEvent, this,
+                            SLOT(onScalarOpacityFunctionChanged()));
+  }
   m_opacityFunction = opacity;
+  m_histogramColorOpacityEditor->SetOpacityFunction(opacity);
+  m_eventLink->Connect(m_opacityFunction, vtkCommand::ModifiedEvent,
+                       this, SLOT(onScalarOpacityFunctionChanged()));
 }
 
 vtkColorTransferFunction* HistogramWidget::LUT()
@@ -175,7 +183,7 @@ void HistogramWidget::updateUI()
 
 void HistogramWidget::renderViews()
 {
-
+  
 //  pqView* view =
 //    tomviz::convert<pqView*>(ActiveObjects::instance().activeView());
 //  if (view) {
